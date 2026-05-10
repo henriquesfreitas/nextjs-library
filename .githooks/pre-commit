@@ -1,0 +1,33 @@
+#!/bin/sh
+# =============================================================================
+# Git Pre-Commit Hook
+# =============================================================================
+# Runs the unit/component test suite before allowing a commit.
+# If any test fails, the commit is blocked.
+#
+# This hook runs tests inside Docker to match the project's containerized
+# development approach. The dev container must be buildable.
+#
+# To install: git config core.hooksPath .githooks
+# =============================================================================
+
+echo "🧪 Running tests before commit..."
+
+# Run unit and component tests inside Docker
+docker compose run --rm test
+
+# Capture the exit code
+TEST_EXIT_CODE=$?
+
+if [ $TEST_EXIT_CODE -ne 0 ]; then
+  echo ""
+  echo "❌ Tests failed! Commit blocked."
+  echo "   Fix the failing tests and try again."
+  echo ""
+  exit 1
+fi
+
+echo ""
+echo "✅ All tests passed. Proceeding with commit."
+echo ""
+exit 0

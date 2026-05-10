@@ -1,0 +1,27 @@
+# =============================================================================
+# E2E Test Dockerfile — Playwright with Chromium
+# =============================================================================
+# This image installs Playwright and its browser dependencies for running
+# end-to-end tests against the Next.js application.
+#
+# Uses the official Playwright Docker image as base, which includes all
+# required system libraries for Chromium, Firefox, and WebKit.
+# =============================================================================
+
+FROM mcr.microsoft.com/playwright:v1.59.1-noble
+
+WORKDIR /app
+
+# Copy dependency manifests
+COPY package.json package-lock.json* ./
+
+# Install all dependencies (including devDependencies for Playwright)
+# Using npm install instead of npm ci to handle lock file updates
+# when new dependencies are added to package.json
+RUN npm install
+
+# Copy application source and test files
+COPY . .
+
+# Default command runs Playwright tests
+CMD ["npx", "playwright", "test"]

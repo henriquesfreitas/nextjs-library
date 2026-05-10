@@ -1,0 +1,124 @@
+# =============================================================================
+# Docker Compose — Book Management CRUD Application
+# =============================================================================
+# This file defines two services for local development and testing.
+# All dependency installation, builds, and test runs happen inside containers.
+# Nothing is installed on the host machine.
+#
+# Usage:
+#   Development server:  docker compose up dev
+#   Run all tests:       docker compose run --rm test
+#   Run specific tests:  docker compose run --rm test npx vitest --run src/__tests__/unit/validators
+#   Rebuild after deps:  docker compose build dev
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # dev — Next.js development server with hot reload
+  # ---------------------------------------------------------------------------
+  # Runs the Next.js dev server on port 3000. Source files and config files
+  # are mounted as volumes so edits on the host are immediately picked up
+  # by the dev server (hot module replacement / fast refresh).
+  #
+  # The DATABASE_URL is read from .env.local on the host, which contains
+  # the Neon PostgreSQL connection string. This file is gitignored.
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    volumes:
+      # Mount source code for live reload — changes on host reflect instantly
+      - ./src:/app/src
+
+      # Mount config files so changes to these are also picked up without rebuild
+      - ./next.config.ts:/app/next.config.ts
+      - ./tsconfig.json:/app/tsconfig.json
+      - ./vitest.config.ts:/app/vitest.config.ts
+      - ./postcss.config.mjs:/app/postcss.config.mjs:ro
+
+      # Prevent the host node_modules from overriding the container's.
+      # This anonymous volume ensures the container uses its own node_modules
+      # installed via npm ci in the Dockerfile.dev.
+      - /app/node_modules
+    env_file:
+      - .env.local
+    environment:
+      - NODE_ENV=development
+      - WATCHPACK_POLLING=true
+    # Health check verifies the dev server is responding.
+    # The Next.js dev server serves pages on port 3000.
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # test — Runs the Vitest test suite inside a container
+  # ---------------------------------------------------------------------------
+  # Uses the same Dockerfile.dev image as the dev service (same dependencies).
+  # Overrides the default CMD to run tests instead of the dev server.
+  #
+  # Source is mounted as a volume so tests always run against the latest code.
+  # The --rm flag in `docker compose run --rm test` cleans up the container
+  # after tests complete.
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      # Mount source code so tests run against the latest changes
+      - ./src:/app/src
+
+      # Mount config files needed by the test runner
+      - ./vitest.config.ts:/app/vitest.config.ts
+      - ./tsconfig.json:/app/tsconfig.json
+      - ./next.config.ts:/app/next.config.ts
+
+      # Isolate container node_modules from host
+      - /app/node_modules
+    env_file:
+      - .env.local
+    environment:
+      - NODE_ENV=test
+    # Override the default CMD (npm run dev) to run tests instead.
+    # Use `docker compose run --rm test` to execute — the container exits
+    # after tests complete and is automatically removed.
+    command: ["npx", "vitest", "--run"]
+
+  # ---------------------------------------------------------------------------
+  # e2e — Playwright end-to-end tests against the running dev server
+  # ---------------------------------------------------------------------------
+  # Uses the official Playwright Docker image with Chromium pre-installed.
+  # Depends on the dev service being healthy (server responding on port 3000).
+  #
+  # Usage:
+  #   docker compose run --rm e2e
+  #   docker compose run --rm e2e npx playwright test --grep "Create Book"
+  e2e:
+    build:
+      context: .
+      dockerfile: Dockerfile.e2e
+    volumes:
+      # Mount source and test files for live updates
+      - ./e2e:/app/e2e
+      - ./src:/app/src
+      - ./playwright.config.ts:/app/playwright.config.ts
+
+      # Isolate container node_modules
+      - /app/node_modules
+    env_file:
+      - .env.local
+    environment:
+      - NODE_ENV=test
+      # Tell Playwright not to start its own server — use the dev service
+      - CI=true
+      - BASE_URL=http://dev:3000
+    depends_on:
+      dev:
+        condition: service_healthy
+    # Override Playwright config to point at the dev service
+    command: ["npx", "playwright", "test", "--config=playwright.docker.config.ts"]

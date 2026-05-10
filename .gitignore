@@ -1,0 +1,39 @@
+# =============================================================================
+# .gitignore — Files excluded from version control
+# =============================================================================
+
+# Dependencies — installed inside Docker containers via npm ci
+node_modules/
+
+# Next.js build output — rebuilt inside Docker containers
+.next/
+
+# Local environment secrets — contains DATABASE_URL with real credentials
+# Use .env.example as a template for setting up .env.local
+.env.local
+
+# TypeScript build info — incremental compilation cache
+*.tsbuildinfo
+
+# Next.js environment type declarations — auto-generated
+next-env.d.ts
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.idea/
+*.swp
+*.swo
+
+# Playwright
+e2e/test-results/
+playwright-report/
+blob-report/
+
+# Postman local IDs
+.postman.json
+
+# Playwright MCP browser session logs/snapshots
+.playwright-mcp/

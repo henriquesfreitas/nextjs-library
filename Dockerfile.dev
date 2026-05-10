@@ -1,0 +1,34 @@
+# =============================================================================
+# Development Dockerfile for Next.js
+# =============================================================================
+# Single-stage image for local development. Installs ALL dependencies
+# (including devDependencies like TypeScript, Vitest, fast-check, etc.)
+# and runs the Next.js dev server with hot module replacement.
+#
+# Source code is mounted as a volume in docker-compose.yml, so changes
+# on the host are immediately reflected inside the container.
+# =============================================================================
+
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy dependency manifests first for Docker layer caching.
+# Source code is mounted as a volume, so we only need these for npm ci.
+COPY package.json package-lock.json* ./
+
+# Install ALL dependencies (including devDependencies).
+# devDependencies are required for: TypeScript compilation, Vitest test runner,
+# fast-check property testing, React Testing Library, Playwright, etc.
+RUN npm install
+
+# Copy the rest of the application source.
+# In practice, docker-compose mounts src/ as a volume, overriding this copy.
+# This COPY ensures the image works standalone if needed.
+COPY . .
+
+EXPOSE 3000
+
+# Default command starts the Next.js development server.
+# Override this in docker-compose.yml for test runs.
+CMD ["npm", "run", "dev"]

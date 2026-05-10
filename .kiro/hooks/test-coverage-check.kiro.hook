@@ -1,0 +1,20 @@
+{
+  "enabled": true,
+  "name": "Test Coverage Check",
+  "description": "When new source files are created, checks if corresponding test files exist and reminds to add tests",
+  "version": "1",
+  "when": {
+    "type": "fileCreated",
+    "patterns": [
+      "src/services/*.ts",
+      "src/data/*.ts",
+      "src/presenters/*.ts",
+      "src/validators/*.ts",
+      "src/components/*.tsx"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A new source file was created. Check if a corresponding test file exists in src/__tests__/. If not, remind the user that tests should be written for this file before committing, and offer to create a test file skeleton."
+  }
+}

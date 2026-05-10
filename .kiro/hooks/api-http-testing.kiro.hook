@@ -1,0 +1,20 @@
+{
+  "enabled": true,
+  "name": "API HTTP Testing",
+  "description": "When API source code changes, reads the api-tests.http file and runs the requests sequentially using curl inside Docker to validate all endpoints are working correctly",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "src/app/api/**/*.ts",
+      "src/services/*.ts",
+      "src/data/*.ts",
+      "src/validators/*.ts",
+      "src/errors/*.ts"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "API source code has been modified. Read the api-tests.http file in the project root. Execute each request sequentially using curl inside the Docker container (docker compose exec web curl ...). For the sequential flow (steps 1-7), use the book_id returned from the Create step in subsequent requests. Report a summary of results: which endpoints passed (correct status code) and which failed. If any fail, propose a fix."
+  }
+}

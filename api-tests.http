@@ -1,0 +1,128 @@
+# Book Management API - HTTP Test File
+# ======================================
+# This file defines all API endpoints with sample requests and expected responses.
+# It can be executed sequentially to validate the full API flow.
+#
+# Variables:
+#   @base_url = http://localhost:3000
+#   @book_id  = (set dynamically after creating a book)
+#
+# Flow: Create → Get → List → Update → Buy → Delete → Verify 404
+
+@base_url = http://localhost:3000
+
+### -----------------------------------------------
+### 1. List all books (empty or populated)
+### Expected: 200 OK, JSON array
+### -----------------------------------------------
+GET {{base_url}}/api/books
+
+### -----------------------------------------------
+### 2. Create a book
+### Expected: 201 Created
+### Response should include: id, status=AVAILABLE, version=0
+### -----------------------------------------------
+POST {{base_url}}/api/books
+Content-Type: application/json
+
+{
+  "title": "The Great Gatsby",
+  "author": "F. Scott Fitzgerald",
+  "isbn": "978-0743273565",
+  "price": 12.99
+}
+
+### -----------------------------------------------
+### 3. Get book by ID
+### Expected: 200 OK, single book object
+### Replace {{book_id}} with the ID from step 2
+### -----------------------------------------------
+GET {{base_url}}/api/books/{{book_id}}
+
+### -----------------------------------------------
+### 4. Update a book (optimistic locking)
+### Expected: 200 OK, version incremented to 1
+### -----------------------------------------------
+PUT {{base_url}}/api/books/{{book_id}}
+Content-Type: application/json
+
+{
+  "title": "The Great Gatsby (Revised Edition)",
+  "author": "F. Scott Fitzgerald",
+  "isbn": "978-0743273565",
+  "price": 14.99,
+  "version": 0
+}
+
+### -----------------------------------------------
+### 5. Buy a book (mark as SOLD)
+### Expected: 200 OK, status=SOLD, version incremented
+### -----------------------------------------------
+PATCH {{base_url}}/api/books/{{book_id}}/buy
+Content-Type: application/json
+
+{
+  "version": 1
+}
+
+### -----------------------------------------------
+### 6. Delete a book
+### Expected: 204 No Content
+### -----------------------------------------------
+DELETE {{base_url}}/api/books/{{book_id}}
+
+### -----------------------------------------------
+### 7. Verify deletion (should 404)
+### Expected: 404 Not Found
+### -----------------------------------------------
+GET {{base_url}}/api/books/{{book_id}}
+
+### ===============================================
+### ERROR CASES
+### ===============================================
+
+### -----------------------------------------------
+### 8. Create book with invalid data
+### Expected: 400 Bad Request, validation errors
+### -----------------------------------------------
+POST {{base_url}}/api/books
+Content-Type: application/json
+
+{
+  "title": "",
+  "author": "",
+  "price": -5
+}
+
+### -----------------------------------------------
+### 9. Get non-existent book
+### Expected: 404 Not Found
+### -----------------------------------------------
+GET {{base_url}}/api/books/99999
+
+### -----------------------------------------------
+### 10. Update with stale version (conflict)
+### Expected: 409 Conflict
+### Note: Create a book first, then try updating with wrong version
+### -----------------------------------------------
+PUT {{base_url}}/api/books/{{book_id}}
+Content-Type: application/json
+
+{
+  "title": "Stale Update",
+  "author": "Someone",
+  "price": 9.99,
+  "version": 999
+}
+
+### -----------------------------------------------
+### 11. Buy an already sold book
+### Expected: 400 or 409 (business rule violation)
+### Note: Requires a book that's already SOLD
+### -----------------------------------------------
+PATCH {{base_url}}/api/books/{{book_id}}/buy
+Content-Type: application/json
+
+{
+  "version": 0
+}

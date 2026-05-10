@@ -1,0 +1,64 @@
+{
+  "compilerOptions": {
+    /* -----------------------------------------------------------------------
+     * Language & Module Settings
+     * Next.js requires "esnext" module with "bundler" resolution so that
+     * TypeScript understands both ESM imports and framework-specific features
+     * like path aliases and server/client component boundaries.
+     * ----------------------------------------------------------------------- */
+    "target": "ES2017",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "jsx": "preserve",
+
+    /* -----------------------------------------------------------------------
+     * Strict Type Checking
+     * Strict mode enables all strict type-checking options at once:
+     * noImplicitAny, strictNullChecks, strictFunctionTypes, etc.
+     * This catches bugs at compile time rather than runtime.
+     * ----------------------------------------------------------------------- */
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "allowJs": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "incremental": true,
+
+    /* -----------------------------------------------------------------------
+     * Path Aliases
+     * Maps "@/" to "src/" so imports read as:
+     *   import { Book } from "@/types/book"
+     * instead of:
+     *   import { Book } from "../../types/book"
+     * This keeps imports clean and decoupled from folder depth.
+     * ----------------------------------------------------------------------- */
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
+
+    /* -----------------------------------------------------------------------
+     * Next.js Plugin
+     * The Next.js TypeScript plugin provides enhanced type checking for
+     * App Router conventions (page.tsx, layout.tsx, route.ts, etc.).
+     * ----------------------------------------------------------------------- */
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ]
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

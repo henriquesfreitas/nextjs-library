@@ -1,0 +1,291 @@
+# Implementation Plan: Book Management CRUD
+
+## Overview
+
+This plan implements a full-stack Book Management CRUD application using Next.js (App Router), React, PostgreSQL (Neon), and a clean layered architecture. Tasks are ordered to set up Docker first, then build foundational layers (types, errors, validation, data access), then business logic (service), then the HTTP layer (API routes), and finally the UI (presenters, components). Each task builds on the previous ones, and property-based tests are placed close to the code they validate.
+
+**All dependency installation, builds, and test execution happen exclusively inside Docker containers.** Nothing is installed on the host machine. The host is used only for editing source files.
+
+The project follows enterprise-grade standards: Docker containerization for environment parity, comprehensive README documentation, clean architecture with SOLID/DRY principles, meaningful logging, and intention-revealing naming conventions throughout.
+
+## Tasks
+
+- [x] 1. Set up Docker environment and project foundation
+  - [x] 1.1 Create Dockerfile and docker-compose.yml
+    - Create a multi-stage `Dockerfile` for the Next.js application
+    - Stage 1 (deps): `node:20-alpine`, install dependencies only via `npm ci`
+    - Stage 2 (builder): Build the Next.js application with `next build` and `output: 'standalone'` in `next.config.ts`
+    - Stage 3 (runner): Minimal production image using `node:20-alpine`, copy standalone output
+    - Create a `Dockerfile.dev` for development — single stage using `node:20-alpine`, installs all dependencies (including devDependencies), runs `npm run dev`
+    - Create `docker-compose.yml` with two services:
+      - `dev`: uses `Dockerfile.dev`, mounts `src/` and config files as volumes for live reload, maps port 3000:3000, passes `DATABASE_URL` from `.env.local`
+      - `test`: uses `Dockerfile.dev`, runs `npx vitest --run`, mounts source as volume
+    - Create `.dockerignore` to exclude `node_modules`, `.next`, `.env.local`, `.git`
+    - Add health check for the dev service
+    - Add comments explaining each service and configuration choice
+    - _Requirements: 8.1 (infrastructure)_
+  - [x] 1.2 Initialize Next.js project and install dependencies inside Docker
+    - Create `package.json` with Next.js, React, TypeScript, and all required dependencies: `pg`, `@types/pg`, `zod`, `pino`, `vitest`, `fast-check`, `@testing-library/react`, `@testing-library/jest-dom`, `@vitejs/plugin-react`, `jsdom`
+    - Create `tsconfig.json` with strict mode and path aliases (`@/` → `src/`)
+    - Create `next.config.ts` with `output: 'standalone'` for Docker production builds
+    - Configure Vitest in `vitest.config.ts` with path aliases matching `tsconfig.json`
+    - Create `.env.example` as a template (no real secrets): `DATABASE_URL=postgresql://user:password@host:5432/dbname?sslmode=require`
+    - Create `.env.local` with the actual `DATABASE_URL` connection string (gitignored)
+    - Create `.gitignore` with `node_modules`, `.next`, `.env.local`
+    - Build the dev Docker image to verify dependencies install correctly: `docker compose build dev`
+    - _Requirements: 7.4, 8.1_
+  - [x] 1.3 Create shared TypeScript type definitions
+    - Create `src/types/book.ts` with `BookRow`, `Book`, `CreateBookInput`, `UpdateBookInput`, and `BookViewModel` interfaces
+    - Create `src/types/api.ts` with `ApiErrorResponse` and `FieldError` interfaces
+    - _Requirements: 8.1_
+  - [x] 1.4 Create custom error classes
+    - Create `src/errors/index.ts` with `AppError`, `ValidationError`, `NotFoundError`, and `ConflictError` classes
+    - `ValidationError` accepts a `FieldError[]` array and sets status 400
+    - `NotFoundError` sets status 404 with a configurable resource name
+    - `ConflictError` sets status 409 with a default message about concurrent modification
+    - _Requirements: 7.6, 8.5_
+  - [x] 1.5 Create centralized logger
+    - Create `src/lib/logger.ts` — a Pino logger instance for consistent structured server-side logging
+    - _Requirements: 8.1_
+
+- [x] 2. Implement validation layer
+  - [x] 2.1 Create Zod validation schemas
+    - Create `src/validators/bookSchemas.ts` with `createBookSchema`, `updateBookSchema`, and `buyBookSchema`
+    - `createBookSchema`: title (required, trimmed, 1–100 chars), author (required, trimmed, 1–255 chars), isbn (optional, trimmed, max 255 chars), price (non-negative number)
+    - `updateBookSchema`: same fields as create plus `version` (non-negative integer)
+    - `buyBookSchema`: `version` (non-negative integer)
+    - Use `.strip()` on all schemas to remove unknown fields
+    - Export inferred TypeScript types from schemas
+    - _Requirements: 2.2, 4.4, 7.2, 7.3, 7.5_
+  - [x] 2.2 Write property tests for validation schemas (Property 3)
+    - **Property 3: Validation schema accepts valid inputs and rejects invalid inputs**
+    - Generate random valid inputs (non-empty title ≤100 chars, non-empty author ≤255 chars, optional isbn ≤255 chars, non-negative price) and assert schema accepts them
+    - Generate random invalid inputs (empty title, title >100 chars, negative price, etc.) and assert schema rejects them
+    - Run tests inside Docker: `docker compose run --rm test npx vitest --run src/__tests__/unit/validators`
+    - **Validates: Requirements 2.2, 2.5, 4.4**
+  - [x] 2.3 Write property tests for input sanitization (Property 8)
+    - **Property 8: Input sanitization trims whitespace and strips unknown fields**
+    - Generate random strings with leading/trailing whitespace and assert trimmed output
+    - Generate objects with extra fields and assert they are stripped
+    - Run tests inside Docker: `docker compose run --rm test npx vitest --run src/__tests__/unit/validators`
+    - **Validates: Requirements 7.3, 7.5**
+
+- [x] 3. Implement data access layer
+  - [x] 3.1 Create database connection pool
+    - Create `src/data/db.ts` that initializes a `pg.Pool` using `DATABASE_URL` from environment variables
+    - Export a query helper function that accepts parameterized queries
+    - _Requirements: 7.1, 7.4_
+  - [x] 3.2 Implement book repository
+    - Create `src/data/bookRepository.ts` implementing the `BookRepository` interface
+    - Implement `findAll()`: `SELECT * FROM books ORDER BY created_at DESC`
+    - Implement `findById(id)`: `SELECT * FROM books WHERE id = $1`
+    - Implement `insert(data)`: `INSERT INTO books (title, author, isbn, price) VALUES ($1, $2, $3, $4) RETURNING *`
+    - Implement `update(id, data, version)`: `UPDATE books SET title=$1, author=$2, isbn=$3, price=$4, updated_at=NOW(), version=version+1 WHERE id=$5 AND version=$6 RETURNING *`
+    - Implement `deleteById(id)`: `DELETE FROM books WHERE id = $1`
+    - Implement `updateStatus(id, status, version)`: `UPDATE books SET status=$1, updated_at=NOW(), version=version+1 WHERE id=$2 AND version=$3 RETURNING *`
+    - All queries MUST use parameterized statements (no string interpolation)
+    - Include a helper to convert `BookRow` (snake_case) to `Book` (camelCase)
+    - _Requirements: 7.1, 8.1, 8.2, 8.3_
+
+- [x] 4. Implement service layer
+  - [x] 4.1 Implement book service
+    - Create `src/services/bookService.ts` implementing the `BookService` interface
+    - `getAllBooks()`: calls `bookRepository.findAll()` and maps rows to `Book[]`
+    - `getBookById(id)`: calls `bookRepository.findById(id)`, throws `NotFoundError` if null
+    - `createBook(input)`: validates with `createBookSchema`, calls `bookRepository.insert()`, returns `Book`
+    - `updateBook(id, input)`: validates with `updateBookSchema`, enforces sold-book restrictions (cannot change price/status), calls `bookRepository.update()`, throws `NotFoundError` if book doesn't exist, throws `ConflictError` if version mismatch (null return from update)
+    - `deleteBook(id)`: calls `bookRepository.deleteById()`, throws `NotFoundError` if not deleted
+    - `buyBook(id, version)`: validates with `buyBookSchema`, fetches book, throws `NotFoundError` if missing, calls `bookRepository.updateStatus()`, throws `ConflictError` if version mismatch
+    - Add structured logging (Pino) for all operations: log book creation, updates, deletions, buy actions, and errors with contextual data (book ID, operation type)
+    - Use intention-revealing method names and add educational comments explaining the Repository and Service patterns
+    - _Requirements: 2.1, 3.1, 3.2, 4.1, 4.2, 4.3, 4.6, 5.1, 5.4, 6.2, 6.3, 6.4_
+  - [x] 4.2 Write property tests for book service (Properties 4, 5, 6, 7)
+    - **Property 4: Created book has correct defaults**
+    - For any valid `CreateBookInput`, assert the created book has status `AVAILABLE`, non-null `createdAt`, and version `0`
+    - **Validates: Requirements 2.1**
+    - **Property 5: Update increments version and sets updated_at**
+    - For any valid update on an existing book with matching version, assert version increments by 1 and `updatedAt` is non-null
+    - **Validates: Requirements 4.1**
+    - **Property 6: Buy transitions status to SOLD**
+    - For any available book with matching version, assert `buyBook` produces status `SOLD` and non-null `updatedAt`
+    - **Validates: Requirements 6.2**
+    - **Property 7: Optimistic locking rejects stale versions**
+    - For any book and a mismatched version number, assert both `updateBook` and `buyBook` throw `ConflictError`
+    - **Validates: Requirements 4.2, 4.3, 6.3, 6.4**
+    - Run tests inside Docker: `docker compose run --rm test npx vitest --run src/__tests__/unit/services`
+
+- [x] 5. Checkpoint — Validate core layers
+  - Run all tests inside Docker: `docker compose run --rm test npx vitest --run`
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 6. Implement API route handlers
+  - [x] 6.1 Create error handling utility for API routes
+    - Create `src/app/api/utils.ts` with a `handleApiError` function that maps `AppError` subclasses to consistent JSON error responses
+    - `ValidationError` → 400 with `errors` array
+    - `NotFoundError` → 404
+    - `ConflictError` → 409
+    - Unknown errors → 500 with generic message, log error server-side using Pino logger with full stack trace
+    - _Requirements: 7.6, 8.5_
+  - [x] 6.2 Write property tests for error response structure (Property 9)
+    - **Property 9: Error responses have consistent structure**
+    - Generate random error types and messages, assert response body always contains `status` (number) and `message` (string)
+    - For validation errors, assert `errors` array with `field` and `message` string fields
+    - Run tests inside Docker: `docker compose run --rm test npx vitest --run src/__tests__/unit/errors`
+    - **Validates: Requirements 7.6**
+  - [x] 6.3 Implement GET /api/books and POST /api/books
+    - Create `src/app/api/books/route.ts`
+    - GET handler: calls `bookService.getAllBooks()`, returns 200 with JSON array
+    - POST handler: parses request body, calls `bookService.createBook()`, returns 201 with created book JSON
+    - Both handlers use `handleApiError` for error responses
+    - _Requirements: 1.1, 1.4, 2.1, 2.3, 2.5, 2.6, 8.2, 8.5_
+  - [x] 6.4 Implement GET, PUT, DELETE /api/books/[id]
+    - Create `src/app/api/books/[id]/route.ts`
+    - GET handler: calls `bookService.getBookById(id)`, returns 200 with book JSON
+    - PUT handler: parses request body, calls `bookService.updateBook(id, input)`, returns 200 with updated book JSON
+    - DELETE handler: calls `bookService.deleteBook(id)`, returns 204 with no body
+    - All handlers use `handleApiError` for error responses
+    - _Requirements: 3.1, 3.2, 3.3, 4.1, 4.2, 4.3, 4.5, 4.6, 5.1, 5.4, 5.5, 8.2, 8.5_
+  - [x] 6.5 Implement PATCH /api/books/[id]/buy
+    - Create `src/app/api/books/[id]/buy/route.ts`
+    - PATCH handler: parses request body for `version`, calls `bookService.buyBook(id, version)`, returns 200 with updated book JSON
+    - Uses `handleApiError` for error responses
+    - _Requirements: 6.2, 6.3, 6.4, 8.3, 8.5_
+
+- [x] 7. Implement presenter layer
+  - [x] 7.1 Create book presenter
+    - Create `src/presenters/bookPresenter.ts` with `toBookViewModel` and `toBookListViewModel` functions
+    - Format `price` as currency string (e.g., `"$12.99"`)
+    - Format `createdAt` and `updatedAt` as human-readable date strings
+    - Derive `canBuy`: `true` when status is `AVAILABLE`
+    - Derive `canEdit`: `true` when status is `AVAILABLE`
+    - Handle `null` isbn by converting to empty string
+    - _Requirements: 1.2, 3.1, 4.7, 6.1, 6.5, 8.4_
+  - [x] 7.2 Write property tests for presenter (Properties 1, 2)
+    - **Property 1: Presenter produces all required fields**
+    - For any valid `Book`, assert `toBookViewModel` produces non-undefined values for `id`, `title`, `author`, `isbn`, `status`, `price`, `createdAt`, `version`
+    - **Validates: Requirements 1.2, 3.1**
+    - **Property 2: Presenter status flags are correctly derived**
+    - For any `Book` with status `AVAILABLE`, assert `canBuy` and `canEdit` are `true`
+    - For any `Book` with status `SOLD`, assert `canBuy` and `canEdit` are `false`
+    - **Validates: Requirements 4.7, 6.1, 6.5**
+    - Run tests inside Docker: `docker compose run --rm test npx vitest --run src/__tests__/unit/presenters`
+
+- [x] 8. Checkpoint — Validate API and presenter layers
+  - Run all tests inside Docker: `docker compose run --rm test npx vitest --run`
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 9. Implement UI components
+  - [x] 9.1 Create shared UI components
+    - Create `src/components/Notification.tsx` — toast-style notification component for success/error messages
+    - Create `src/components/ConfirmDialog.tsx` — reusable confirmation modal with confirm/cancel actions
+    - Create `src/components/EmptyState.tsx` — displayed when no books exist, with a message and link to create a book
+    - Create `src/components/ErrorMessage.tsx` — displays error messages with optional retry action
+    - _Requirements: 1.3, 2.3, 5.2, 5.3_
+  - [x] 9.2 Create BookForm component
+    - Create `src/components/BookForm.tsx` as a Client Component
+    - Accept props for create mode (empty form) and edit mode (pre-filled with book data)
+    - Integrate Zod validation on the client side using the shared `createBookSchema`/`updateBookSchema`
+    - Display field-level error messages inline below each input
+    - Disable price and status fields when the book status is `SOLD`
+    - On valid submission, POST or PUT to the appropriate API endpoint
+    - Show success notification and redirect on success; show error notification on failure
+    - _Requirements: 2.2, 2.3, 2.4, 4.4, 4.5, 4.7_
+  - [x] 9.3 Create BookList component
+    - Create `src/components/BookList.tsx` as a Client Component
+    - Render books in a table or card layout showing title, author, isbn, status, price, and created_at
+    - Show a "Buy" button for books with status `AVAILABLE`; hide it for `SOLD` books
+    - Clicking "Buy" opens a `ConfirmDialog`, then calls PATCH `/api/books/[id]/buy`
+    - Each book row links to the book detail page
+    - Show success notification after a successful buy and refresh the list
+    - _Requirements: 1.1, 1.2, 6.1, 6.2, 6.5, 6.6_
+
+- [x] 10. Implement page routes
+  - [x] 10.1 Create Books List page
+    - Create `src/app/books/page.tsx` as a Server Component
+    - Fetch all books from `/api/books` and pass to `BookList` via the presenter
+    - Show `EmptyState` when no books are returned
+    - Show `ErrorMessage` on fetch failure
+    - Include a link/button to navigate to the create book page
+    - _Requirements: 1.1, 1.2, 1.3, 1.4_
+  - [x] 10.2 Create Book Detail page
+    - Create `src/app/books/[id]/page.tsx` as a Server Component
+    - Fetch book by ID from `/api/books/[id]` and display all fields via the presenter
+    - Show "Book not found" with a back link if 404
+    - Show `ErrorMessage` on fetch failure
+    - Include Edit and Delete action buttons
+    - Show "Buy" button if book status is `AVAILABLE`
+    - Delete button opens `ConfirmDialog`, then calls DELETE `/api/books/[id]`
+    - On successful delete, redirect to Book List page with success notification
+    - _Requirements: 3.1, 3.2, 3.3, 5.1, 5.2, 5.3, 5.4, 5.5, 6.1, 6.5_
+  - [x] 10.3 Create New Book page
+    - Create `src/app/books/new/page.tsx`
+    - Render `BookForm` in create mode
+    - On successful creation, redirect to Book List page with success notification
+    - _Requirements: 2.1, 2.3_
+  - [x] 10.4 Create Edit Book page
+    - Create `src/app/books/[id]/edit/page.tsx`
+    - Fetch existing book data and render `BookForm` in edit mode
+    - On successful update, redirect to Book Detail page with success notification
+    - Show "Book not found" if the book doesn't exist
+    - _Requirements: 4.1, 4.5, 4.6, 4.7_
+  - [x] 10.5 Set up root redirect and layout
+    - Configure `src/app/page.tsx` to redirect to `/books`
+    - Create `src/app/layout.tsx` with base HTML structure, metadata, and global styles
+    - _Requirements: 1.1_
+
+- [x] 11. Checkpoint — Validate full application
+  - Run all tests inside Docker: `docker compose run --rm test npx vitest --run`
+  - Build the production Docker image to verify it compiles: `docker compose build`
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 12. Write component tests
+  - [x] 12.1 Write tests for BookForm component
+    - Test form renders with empty fields in create mode
+    - Test form renders with pre-filled fields in edit mode
+    - Test field-level validation errors display on invalid submission
+    - Test price and status fields are disabled when book is SOLD
+    - Run tests inside Docker: `docker compose run --rm test npx vitest --run src/__tests__/components`
+    - _Requirements: 2.2, 2.4, 4.4, 4.7_
+  - [x] 12.2 Write tests for BookList component
+    - Test list renders book data correctly
+    - Test empty state is shown when no books
+    - Test "Buy" button is visible for AVAILABLE books and hidden for SOLD books
+    - _Requirements: 1.1, 1.2, 1.3, 6.1, 6.5_
+  - [x] 12.3 Write tests for ConfirmDialog component
+    - Test dialog opens with correct message
+    - Test confirm button triggers the action callback
+    - Test cancel button dismisses the dialog
+    - _Requirements: 5.2_
+
+- [x] 13. Create comprehensive README.md
+  - [x] 13.1 Write README.md
+    - Include project title and description
+    - Document the full technology stack (Next.js, React, TypeScript, PostgreSQL/Neon, Zod, Pino, Vitest, fast-check)
+    - List system prerequisites (Docker, Docker Compose — no local Node.js required)
+    - Provide step-by-step instructions for: running with Docker (`docker compose up dev`), running tests (`docker compose run --rm test`), building production image
+    - Document the project architecture (layered architecture diagram, folder structure)
+    - Document all API endpoints with request/response examples
+    - Include environment variable reference table
+    - Document the design patterns used (Repository, Presenter/MVP, clean architecture layers)
+    - _Requirements: 8.1 (documentation)_
+
+- [x] 14. Final checkpoint — Ensure all tests pass
+  - Run full test suite inside Docker: `docker compose run --rm test npx vitest --run`
+  - Verify production build inside Docker: `docker compose build`
+  - Ensure all tests pass, ask the user if questions arise.
+
+## Notes
+
+- **Docker-only execution**: All dependency installation, builds, and test runs happen inside Docker containers. Nothing is installed on the host machine.
+- Each task references specific requirement acceptance criteria for traceability
+- Property-based tests use `fast-check` with a minimum of 100 iterations per property
+- Checkpoints are placed after core layers, after API/presenter layers, and at the end for incremental validation
+- All database queries use parameterized statements — no string interpolation
+- The database and `books` table already exist; no migration tasks are needed
+- Docker containerization ensures environment parity across development and production
+- All code uses intention-revealing names and educational comments explaining *why* patterns are used
+- Structured logging via Pino is used across all server-side layers for observability
+- `.env.example` is provided as a template; `.env.local` with real secrets is gitignored
+- Test command: `docker compose run --rm test npx vitest --run`
+- Dev server command: `docker compose up dev`
+- Production build: `docker compose build`
