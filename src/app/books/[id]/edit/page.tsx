@@ -1,26 +1,43 @@
 /**
  * Edit Book Page — Server Component
  *
- * Fetches an existing book by ID on the server and renders the BookForm
- * component in "edit" mode with the book's current data pre-filled.
+ * Fetches an existing book and renders the BookForm in "edit" mode, pre-filled
+ * with the book's current data.
  *
- * Data flow:
- *   bookService.getBookById(id)  →  Book
- *   toBookViewModel()            →  BookViewModel
- *   <BookForm mode="edit" book={viewModel} />  →  pre-filled form
+ * Pattern: Server Component (Data Fetching + Delegation)
+ * This page runs on the server to fetch the book, then delegates rendering to
+ * the BookForm Client Component. The server handles the data-fetching and error
+ * states; the client handles form interactivity.
  *
- * The page handles three states:
- *   1. **Book found**    — renders BookForm with pre-filled data
- *   2. **Not found**     — renders a "Book not found" message with a back link
- *   3. **Fetch error**   — renders the ErrorMessage component
+ * Data Flow:
+ * 1. Extracts the book `id` from route params (Next.js 15 async params).
+ * 2. Calls `bookService.getBookById(id)` to fetch the current book state.
+ * 3. Transforms to BookViewModel via the presenter (for consistent formatting).
+ * 4. Passes the view model to BookForm with `mode="edit"`, which pre-fills all
+ *    fields and includes the `version` for optimistic locking on submit.
  *
- * On successful update, the BookForm handles the redirect to the Book Detail
- * page and displays a success notification (Requirement 4.5).
+ * Three States:
+ * - Found: Renders BookForm in edit mode with pre-filled data. The form handles
+ *   validation, submission, and navigation.
+ * - Not Found (NotFoundError): Renders a "Book not found" message explaining the
+ *   book may have been deleted, with a link back to the list.
+ * - Error (unexpected): Renders an ErrorMessage with a generic failure message.
  *
- * In Next.js 15 App Router, dynamic route params are accessed as a Promise:
- *   params: Promise<{ id: string }>
+ * Next.js 15 Params:
+ * In Next.js 15 App Router, `params` is a Promise that must be awaited. This
+ * differs from earlier versions where params was synchronously available.
  *
- * Validates: Requirements 4.1, 4.5, 4.6, 4.7
+ * Why Server Component:
+ * The edit page needs to pre-fetch the book's current state to populate the form.
+ * Doing this on the server avoids a client-side loading state and ensures the form
+ * always opens with fresh data (no stale cache). The BookForm itself is a Client
+ * Component because it needs controlled inputs and event handlers.
+ *
+ * Styling uses Tailwind utility classes for maintainability and responsive design support.
+ *
+ * Validates: Requirements 4.1 (edit page accessible from detail), 4.5 (optimistic
+ * locking — version passed to form), 4.6 (handle not-found gracefully),
+ * 4.7 (sold-book price restriction enforced in BookForm).
  */
 
 import Link from 'next/link';
@@ -29,47 +46,6 @@ import { toBookViewModel } from '@/presenters/bookPresenter';
 import { NotFoundError } from '@/errors';
 import BookForm from '@/components/BookForm';
 import ErrorMessage from '@/components/ErrorMessage';
-
-/* ------------------------------------------------------------------ */
-/*  Inline styles — consistent with other pages in the project         */
-/* ------------------------------------------------------------------ */
-
-const pageContainerStyles: React.CSSProperties = {
-  maxWidth: '640px',
-  margin: '0 auto',
-  padding: '2rem 1.5rem',
-};
-
-const backLinkStyles: React.CSSProperties = {
-  display: 'inline-block',
-  marginBottom: '1.5rem',
-  color: '#2563eb',
-  textDecoration: 'none',
-  fontSize: '0.9rem',
-  fontWeight: 500,
-};
-
-const notFoundContainerStyles: React.CSSProperties = {
-  textAlign: 'center',
-  padding: '3rem 1.5rem',
-};
-
-const notFoundHeadingStyles: React.CSSProperties = {
-  fontSize: '1.25rem',
-  fontWeight: 600,
-  color: '#374151',
-  marginBottom: '1rem',
-};
-
-const notFoundTextStyles: React.CSSProperties = {
-  fontSize: '0.95rem',
-  color: '#6b7280',
-  marginBottom: '1.5rem',
-};
-
-/* ------------------------------------------------------------------ */
-/*  Page Component                                                     */
-/* ------------------------------------------------------------------ */
 
 export default async function EditBookPage({
   params,
@@ -84,19 +60,18 @@ export default async function EditBookPage({
 
     return <BookForm mode="edit" book={viewModel} />;
   } catch (error) {
-    // NotFoundError → show "Book not found" with a back link (Requirement 4.6)
     if (error instanceof NotFoundError) {
       return (
-        <div style={pageContainerStyles}>
-          <Link href="/books" style={backLinkStyles}>
+        <div className="max-w-[640px] mx-auto px-6 py-8">
+          <Link href="/books" className="inline-block mb-6 text-blue-600 text-sm font-medium hover:underline">
             ← Back to Books
           </Link>
-          <div style={notFoundContainerStyles}>
-            <h1 style={notFoundHeadingStyles}>Book not found</h1>
-            <p style={notFoundTextStyles}>
+          <div className="text-center py-12 px-6">
+            <h1 className="text-xl font-semibold text-gray-700 mb-4">Book not found</h1>
+            <p className="text-[0.95rem] text-gray-500 mb-6">
               The book you are trying to edit does not exist or has been removed.
             </p>
-            <Link href="/books" style={backLinkStyles}>
+            <Link href="/books" className="text-blue-600 text-sm font-medium hover:underline">
               Return to Book List
             </Link>
           </div>
@@ -104,10 +79,9 @@ export default async function EditBookPage({
       );
     }
 
-    // Any other error → show generic error message
     return (
-      <div style={pageContainerStyles}>
-        <Link href="/books" style={backLinkStyles}>
+      <div className="max-w-[640px] mx-auto px-6 py-8">
+        <Link href="/books" className="inline-block mb-6 text-blue-600 text-sm font-medium hover:underline">
           ← Back to Books
         </Link>
         <ErrorMessage message="Failed to load book for editing. Please try again later." />

@@ -1,31 +1,47 @@
 /**
  * Book Detail Page — Server Component
  *
- * Displays the full details of a single book. As a Server Component, it
- * fetches data directly from the service layer on the server — no HTTP
- * round-trip to the API routes is needed.
+ * Displays full details for a single book and delegates interactive behavior
+ * (Delete, Buy) to the BookDetailClient component.
  *
- * Data flow:
- *   bookService.getBookById(id)  →  Book
- *   toBookViewModel()            →  BookViewModel
- *   <BookDetailClient book={…} />  →  interactive detail view
+ * Pattern: Server Component with Server/Client Split
+ * This page fetches data on the server and renders one of three states. The "happy
+ * path" delegates to BookDetailClient (a Client Component) for interactivity. The
+ * error paths render entirely on the server with zero client JS.
  *
- * The page handles three states:
- *   1. **Book found**    — renders the BookDetailClient with all fields
- *   2. **Not found**     — renders a "Book not found" message with a back link
- *   3. **Fetch error**   — renders the ErrorMessage component
+ * Data Flow:
+ * 1. Extracts the book `id` from the route params (Next.js 15 async params).
+ * 2. Calls `bookService.getBookById(id)` to fetch from the database.
+ * 3. Transforms the domain Book into a BookViewModel via the presenter.
+ * 4. Passes the view model to BookDetailClient for interactive rendering.
  *
- * Why Server + Client split?
- * ──────────────────────────
- * The page needs both server-side data fetching (fast, no client JS) and
- * client-side interactivity (delete/buy confirmation dialogs, notifications).
- * The Server Component fetches and transforms the data, then passes the
- * view model to the BookDetailClient (Client Component) for rendering.
+ * Three States:
+ * - Found: Renders BookDetailClient with the full book view model. The client
+ *   component handles Delete/Buy flows, navigation, and notifications.
+ * - Not Found (NotFoundError): Renders a friendly "Book not found" message with
+ *   a link back to the book list. No client JS needed.
+ * - Error (unexpected): Renders an ErrorMessage component with a generic failure
+ *   message and a back link. Graceful degradation — never shows raw errors.
  *
- * In Next.js 15 App Router, dynamic route params are accessed as a Promise:
- *   params: Promise<{ id: string }>
+ * Server/Client Split Rationale:
+ * Fetching a single book by ID is a server concern — it benefits from direct DB
+ * access, avoids client-side loading spinners, and keeps the API key/connection
+ * string off the client. But the detail page has interactive features (Delete
+ * confirmation, Buy confirmation, notifications, router navigation) that require
+ * client-side state and event handlers. The split keeps the fetch path lean while
+ * enabling rich interactivity in the client subtree.
  *
- * Validates: Requirements 3.1, 3.2, 3.3, 5.1, 5.2, 5.3, 5.4, 5.5, 6.1, 6.5
+ * Next.js 15 Params:
+ * In Next.js 15 App Router, `params` is a Promise that must be awaited. This is
+ * a breaking change from earlier versions where params was a plain object.
+ *
+ * Styling uses Tailwind utility classes for maintainability and responsive design support.
+ *
+ * Validates: Requirements 3.1 (display book details), 3.2 (show all fields),
+ * 3.3 (back navigation link), 5.1 (delete action available), 5.2 (confirmation
+ * before delete), 5.3 (success/error feedback), 5.4 (redirect after delete),
+ * 5.5 (handle errors gracefully), 6.1 (Buy for available books),
+ * 6.5 (optimistic locking via version).
  */
 
 import Link from 'next/link';
@@ -34,47 +50,6 @@ import { toBookViewModel } from '@/presenters/bookPresenter';
 import { NotFoundError } from '@/errors';
 import BookDetailClient from '@/components/BookDetailClient';
 import ErrorMessage from '@/components/ErrorMessage';
-
-/* ------------------------------------------------------------------ */
-/*  Inline styles                                                      */
-/* ------------------------------------------------------------------ */
-
-const pageContainerStyles: React.CSSProperties = {
-  maxWidth: '640px',
-  margin: '0 auto',
-  padding: '2rem 1.5rem',
-};
-
-const backLinkStyles: React.CSSProperties = {
-  display: 'inline-block',
-  marginBottom: '1.5rem',
-  color: '#2563eb',
-  textDecoration: 'none',
-  fontSize: '0.9rem',
-  fontWeight: 500,
-};
-
-const notFoundContainerStyles: React.CSSProperties = {
-  textAlign: 'center',
-  padding: '3rem 1.5rem',
-};
-
-const notFoundHeadingStyles: React.CSSProperties = {
-  fontSize: '1.25rem',
-  fontWeight: 600,
-  color: '#374151',
-  marginBottom: '1rem',
-};
-
-const notFoundTextStyles: React.CSSProperties = {
-  fontSize: '0.95rem',
-  color: '#6b7280',
-  marginBottom: '1.5rem',
-};
-
-/* ------------------------------------------------------------------ */
-/*  Page Component                                                     */
-/* ------------------------------------------------------------------ */
 
 export default async function BookDetailPage({
   params,
@@ -89,19 +64,18 @@ export default async function BookDetailPage({
 
     return <BookDetailClient book={viewModel} />;
   } catch (error) {
-    // NotFoundError → show "Book not found" with a back link (Requirement 3.2)
     if (error instanceof NotFoundError) {
       return (
-        <div style={pageContainerStyles}>
-          <Link href="/books" style={backLinkStyles}>
+        <div className="max-w-[640px] mx-auto px-6 py-8">
+          <Link href="/books" className="inline-block mb-6 text-blue-600 text-sm font-medium hover:underline">
             ← Back to Books
           </Link>
-          <div style={notFoundContainerStyles}>
-            <h1 style={notFoundHeadingStyles}>Book not found</h1>
-            <p style={notFoundTextStyles}>
+          <div className="text-center py-12 px-6">
+            <h1 className="text-xl font-semibold text-gray-700 mb-4">Book not found</h1>
+            <p className="text-[0.95rem] text-gray-500 mb-6">
               The book you are looking for does not exist or has been removed.
             </p>
-            <Link href="/books" style={backLinkStyles}>
+            <Link href="/books" className="text-blue-600 text-sm font-medium hover:underline">
               Return to Book List
             </Link>
           </div>
@@ -109,10 +83,9 @@ export default async function BookDetailPage({
       );
     }
 
-    // Any other error → show generic error message (Requirement 3.3)
     return (
-      <div style={pageContainerStyles}>
-        <Link href="/books" style={backLinkStyles}>
+      <div className="max-w-[640px] mx-auto px-6 py-8">
+        <Link href="/books" className="inline-block mb-6 text-blue-600 text-sm font-medium hover:underline">
           ← Back to Books
         </Link>
         <ErrorMessage message="Failed to load book details. Please try again later." />

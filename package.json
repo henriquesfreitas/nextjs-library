@@ -20,7 +20,9 @@
     "react-dom": "^19.1.0",
     "pg": "^8.16.0",
     "zod": "^3.25.36",
-    "pino": "^9.7.0"
+    "pino": "^9.7.0",
+    "tailwindcss": "^4.1.0",
+    "@tailwindcss/postcss": "^4.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.15.21",

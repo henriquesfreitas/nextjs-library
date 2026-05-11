@@ -36,7 +36,7 @@ services:
       - ./next.config.ts:/app/next.config.ts
       - ./tsconfig.json:/app/tsconfig.json
       - ./vitest.config.ts:/app/vitest.config.ts
-      - ./postcss.config.mjs:/app/postcss.config.mjs:ro
+      - ./postcss.config.cjs:/app/postcss.config.cjs
 
       # Prevent the host node_modules from overriding the container's.
       # This anonymous volume ensures the container uses its own node_modules

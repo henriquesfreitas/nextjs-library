@@ -1,83 +1,58 @@
 /**
  * ErrorMessage Component — Displays an error with an optional retry action.
  *
- * This is a Server Component by default (no 'use client' directive needed
- * when no `onRetry` is provided). However, when `onRetry` is passed, the
- * parent must be a Client Component since callbacks require client-side JS.
+ * Pattern: Server Component by default (Presentational)
+ * This file has no 'use client' directive. It can render as a Server Component
+ * (zero client JS) when used without the `onRetry` callback, or it can be
+ * imported into a Client Component that passes an interactive retry handler.
+ * In either case, the component itself is purely presentational — it receives
+ * a message string and optionally a retry callback, and renders them.
  *
- * We intentionally keep this as a Server Component because:
- * 1. The retry button works via the parent's onClick handler — no local state
- * 2. It renders correctly in both Server and Client Component trees
- * 3. It avoids shipping unnecessary JavaScript to the client
- *
- * Pattern: "Presentational Component" — receives all data and callbacks via
- * props, owns no state, and focuses purely on rendering. This makes it easy
- * to test and reuse across different error scenarios (fetch failures, 404s,
- * API errors, etc.).
+ * Why it exists:
+ * Provides a consistent, accessible error display across the application.
+ * Rather than each page implementing its own error UI, this component
+ * standardizes the visual treatment (red background, warning icon, message,
+ * optional retry button) and accessibility semantics.
  *
  * Accessibility:
- * - role="alert" announces the error to screen readers immediately
- * - aria-live="polite" avoids interrupting the user mid-task
- * - The retry button is a standard <button> with clear labeling
+ * - `role="alert"` marks the container as an alert landmark. Screen readers
+ *   will immediately announce the content when it appears in the DOM, without
+ *   requiring the user to navigate to it. This is critical for error messages
+ *   that appear after an async operation fails.
+ * - `aria-live="polite"` provides a fallback live-region behavior for assistive
+ *   tech that handles role="alert" differently. "polite" means the announcement
+ *   waits until the user is idle, avoiding interruption of ongoing speech.
+ * - The warning emoji uses `aria-hidden="true"` to prevent screen readers from
+ *   announcing "warning sign" — the role="alert" already conveys urgency.
  *
- * Validates: Requirements 5.2, 5.3
+ * Styling uses Tailwind utility classes for maintainability and responsive design support.
+ *
+ * Validates: Requirements 5.2 (error feedback for failed operations),
+ * 5.3 (accessible error announcements via ARIA live regions).
  */
 
 export interface ErrorMessageProps {
-  /** The error message to display */
   message: string;
-  /** Optional callback to retry the failed operation. When provided, a retry button is rendered. */
   onRetry?: () => void;
 }
 
-/* ------------------------------------------------------------------ */
-/*  Inline styles                                                      */
-/* ------------------------------------------------------------------ */
-
-const containerStyles: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: '2rem 1.5rem',
-  textAlign: 'center',
-  backgroundColor: '#fef2f2',
-  border: '1px solid #fecaca',
-  borderRadius: '0.5rem',
-};
-
-const iconStyles: React.CSSProperties = {
-  fontSize: '2rem',
-  marginBottom: '0.75rem',
-};
-
-const messageTextStyles: React.CSSProperties = {
-  margin: '0 0 1rem',
-  fontSize: '1rem',
-  color: '#991b1b',
-  lineHeight: 1.5,
-};
-
-const retryButtonStyles: React.CSSProperties = {
-  padding: '0.5rem 1.25rem',
-  backgroundColor: '#dc2626',
-  color: '#ffffff',
-  border: 'none',
-  borderRadius: '0.375rem',
-  fontSize: '0.9rem',
-  fontWeight: 500,
-  cursor: 'pointer',
-};
-
 export default function ErrorMessage({ message, onRetry }: ErrorMessageProps) {
   return (
-    <div role="alert" aria-live="polite" style={containerStyles}>
-      <div style={iconStyles} aria-hidden="true">
+    <div
+      role="alert"
+      aria-live="polite"
+      className="flex flex-col items-center justify-center p-8 text-center bg-red-50 border border-red-200 rounded-lg"
+    >
+      <div className="text-3xl mb-3" aria-hidden="true">
         ⚠️
       </div>
-      <p style={messageTextStyles}>{message}</p>
+      <p className="text-base text-red-800 leading-relaxed mb-4">{message}</p>
       {onRetry && (
-        <button type="button" onClick={onRetry} style={retryButtonStyles}>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="px-5 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 transition-colors"
+        >
           Try Again
         </button>
       )}

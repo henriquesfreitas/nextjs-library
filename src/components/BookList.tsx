@@ -10,143 +10,59 @@ import Notification from '@/components/Notification';
 /**
  * BookList Component — Renders a table of books with inline Buy actions.
  *
- * This is a Client Component because it manages interactive state:
- * the confirmation dialog for buying, notification toasts, and fetch calls
- * to the buy API endpoint. The parent (BooksPage, a Server Component)
- * fetches the data and passes it down as pre-transformed `BookViewModel[]`.
+ * Pattern: Presentational + Local State
+ * This component is primarily presentational — it receives a pre-formatted array of
+ * BookViewModels from its parent Server Component and renders them in a table. The
+ * local state it manages is limited to the Buy flow (confirmation dialog visibility,
+ * loading state, and notification feedback). It does not own or fetch data itself.
  *
- * Pattern: "Presentational + Local State" — the component receives
- * display-ready data from the presenter layer (formatted prices, dates,
- * derived `canBuy` flags) and only manages UI interaction state locally.
- * This keeps the component focused on rendering and user actions.
+ * Buy Flow:
+ * 1. User clicks "Buy" button on an AVAILABLE book row.
+ * 2. A ConfirmDialog opens asking for confirmation (prevents accidental purchases).
+ * 3. On confirm, a PATCH request is sent to `/api/books/:id/buy` with the book's
+ *    current `version` for optimistic locking.
+ * 4. On success, a success Notification is shown and `router.refresh()` triggers
+ *    a Server Component re-render to reflect the updated status.
+ * 5. On failure (conflict, network error), an error Notification is displayed.
  *
- * Buy flow:
- * 1. User clicks "Buy" → ConfirmDialog opens
- * 2. User confirms → PATCH /api/books/[id]/buy with { version }
- * 3. On success → Notification shown, router.refresh() reloads server data
- * 4. On failure → Error notification shown (409 conflict, 404, etc.)
+ * Why 'use client':
+ * The Buy flow requires event handlers (onClick), local state (useState), and
+ * imperative navigation (useRouter). These are client-only capabilities in the
+ * Next.js App Router model, so this component must be a Client Component.
  *
  * Accessibility:
- * - Semantic <table> with <thead>/<tbody> for screen reader navigation
- * - Each row links to the detail page via Next.js <Link>
- * - Buy buttons have descriptive aria-labels including the book title
- * - Status badges use aria-label for screen reader clarity
+ * - Uses a semantic <table> with <thead>/<tbody> and `scope="col"` on headers,
+ *   enabling screen readers to associate data cells with their column headers.
+ * - Each "Buy" button has an `aria-label` that includes the book title, so screen
+ *   reader users know which book the action applies to (e.g., "Buy 'Clean Code'").
+ * - The title column links use `aria-label` with the book title for context.
+ * - Status badges use `aria-label` to announce the status in lowercase prose.
+ * - ConfirmDialog and Notification handle their own accessibility concerns.
  *
- * Validates: Requirements 1.1, 1.2, 6.1, 6.2, 6.5, 6.6
+ * Data Flow:
+ * Server Component (page.tsx) → bookService.getAllBooks() → presenter →
+ * BookViewModel[] → this component renders the table and handles Buy interactions.
+ *
+ * Styling uses Tailwind utility classes for maintainability and responsive design support.
+ *
+ * Validates: Requirements 1.1 (display book list), 1.2 (show all fields in table),
+ * 6.1 (Buy button for available books), 6.2 (confirmation before purchase),
+ * 6.5 (optimistic locking via version), 6.6 (success/error feedback).
  */
 
 export interface BookListProps {
-  /** Pre-transformed book data from the presenter layer */
   books: BookViewModel[];
 }
 
-/* ------------------------------------------------------------------ */
-/*  Inline styles                                                      */
-/* ------------------------------------------------------------------ */
-
-const containerStyles: React.CSSProperties = {
-  width: '100%',
-  overflowX: 'auto',
-};
-
-const tableStyles: React.CSSProperties = {
-  width: '100%',
-  borderCollapse: 'collapse',
-  fontSize: '0.9rem',
-  lineHeight: 1.5,
-};
-
-const thStyles: React.CSSProperties = {
-  padding: '0.75rem 1rem',
-  textAlign: 'left',
-  fontWeight: 600,
-  color: '#374151',
-  borderBottom: '2px solid #e5e7eb',
-  whiteSpace: 'nowrap',
-};
-
-const tdStyles: React.CSSProperties = {
-  padding: '0.75rem 1rem',
-  color: '#111827',
-  borderBottom: '1px solid #f3f4f6',
-  verticalAlign: 'middle',
-};
-
-const rowLinkStyles: React.CSSProperties = {
-  color: '#2563eb',
-  textDecoration: 'none',
-  fontWeight: 500,
-};
-
-const statusBadgeBase: React.CSSProperties = {
-  display: 'inline-block',
-  padding: '0.2rem 0.6rem',
-  borderRadius: '9999px',
-  fontSize: '0.75rem',
-  fontWeight: 600,
-  textTransform: 'uppercase',
-  letterSpacing: '0.025em',
-};
-
-const statusStyles: Record<BookViewModel['status'], React.CSSProperties> = {
-  AVAILABLE: {
-    ...statusBadgeBase,
-    backgroundColor: '#f0fdf4',
-    color: '#166534',
-  },
-  SOLD: {
-    ...statusBadgeBase,
-    backgroundColor: '#fef2f2',
-    color: '#991b1b',
-  },
-};
-
-const buyButtonStyles: React.CSSProperties = {
-  padding: '0.35rem 0.85rem',
-  backgroundColor: '#16a34a',
-  color: '#ffffff',
-  border: 'none',
-  borderRadius: '0.375rem',
-  fontSize: '0.8rem',
-  fontWeight: 500,
-  cursor: 'pointer',
-  whiteSpace: 'nowrap',
-};
-
-const buyButtonDisabledStyles: React.CSSProperties = {
-  ...buyButtonStyles,
-  backgroundColor: '#86efac',
-  cursor: 'not-allowed',
-};
-
-/* ------------------------------------------------------------------ */
-/*  Component                                                          */
-/* ------------------------------------------------------------------ */
-
 export default function BookList({ books }: BookListProps) {
   const router = useRouter();
-
-  /**
-   * Tracks which book the user wants to buy. When non-null, the
-   * ConfirmDialog is shown. Storing the full view model gives us
-   * access to the title (for the dialog message) and version
-   * (for the optimistic locking request).
-   */
   const [buyTarget, setBuyTarget] = useState<BookViewModel | null>(null);
-
-  /** True while the buy API call is in flight — disables the confirm button */
   const [isBuying, setIsBuying] = useState(false);
-
-  /** Toast notification state for success/error feedback */
   const [notification, setNotification] = useState<{
     message: string;
     type: 'success' | 'error';
   } | null>(null);
 
-  /**
-   * Opens the confirmation dialog for a specific book.
-   * Stops event propagation so the row's link doesn't navigate away.
-   */
   const handleBuyClick = useCallback(
     (e: React.MouseEvent, book: BookViewModel) => {
       e.preventDefault();
@@ -156,16 +72,8 @@ export default function BookList({ books }: BookListProps) {
     []
   );
 
-  /**
-   * Executes the buy action after the user confirms.
-   *
-   * Sends PATCH /api/books/[id]/buy with the book's current version
-   * for optimistic locking. On success, shows a notification and
-   * refreshes the page so the Server Component re-fetches fresh data.
-   */
   const handleBuyConfirm = useCallback(async () => {
     if (!buyTarget) return;
-
     setIsBuying(true);
 
     try {
@@ -180,14 +88,11 @@ export default function BookList({ books }: BookListProps) {
           message: `"${buyTarget.title}" has been marked as sold.`,
           type: 'success',
         });
-        // Refresh the page so the Server Component re-fetches updated data
         router.refresh();
       } else {
         const errorBody = await response.json();
         setNotification({
-          message:
-            errorBody.message ||
-            'Failed to complete the purchase. Please try again.',
+          message: errorBody.message || 'Failed to complete the purchase. Please try again.',
           type: 'error',
         });
       }
@@ -202,16 +107,12 @@ export default function BookList({ books }: BookListProps) {
     }
   }, [buyTarget, router]);
 
-  /**
-   * Closes the confirmation dialog without taking action.
-   */
   const handleBuyCancel = useCallback(() => {
     setBuyTarget(null);
   }, []);
 
   return (
-    <div style={containerStyles}>
-      {/* Toast notification for buy success/error feedback */}
+    <div className="w-full overflow-x-auto">
       {notification && (
         <Notification
           message={notification.message}
@@ -220,7 +121,6 @@ export default function BookList({ books }: BookListProps) {
         />
       )}
 
-      {/* Confirmation dialog for the buy action */}
       <ConfirmDialog
         isOpen={buyTarget !== null}
         title="Confirm Purchase"
@@ -235,51 +135,51 @@ export default function BookList({ books }: BookListProps) {
         onCancel={handleBuyCancel}
       />
 
-      {/* Book table — semantic HTML for accessibility */}
-      <table style={tableStyles}>
+      <table className="w-full border-collapse text-sm leading-relaxed">
         <thead>
           <tr>
-            <th style={thStyles} scope="col">Title</th>
-            <th style={thStyles} scope="col">Author</th>
-            <th style={thStyles} scope="col">ISBN</th>
-            <th style={thStyles} scope="col">Status</th>
-            <th style={thStyles} scope="col">Price</th>
-            <th style={thStyles} scope="col">Created</th>
-            <th style={thStyles} scope="col">Actions</th>
+            <th className="px-4 py-3 text-left font-semibold text-gray-700 border-b-2 border-gray-200 whitespace-nowrap" scope="col">Title</th>
+            <th className="px-4 py-3 text-left font-semibold text-gray-700 border-b-2 border-gray-200 whitespace-nowrap" scope="col">Author</th>
+            <th className="px-4 py-3 text-left font-semibold text-gray-700 border-b-2 border-gray-200 whitespace-nowrap" scope="col">ISBN</th>
+            <th className="px-4 py-3 text-left font-semibold text-gray-700 border-b-2 border-gray-200 whitespace-nowrap" scope="col">Status</th>
+            <th className="px-4 py-3 text-left font-semibold text-gray-700 border-b-2 border-gray-200 whitespace-nowrap" scope="col">Price</th>
+            <th className="px-4 py-3 text-left font-semibold text-gray-700 border-b-2 border-gray-200 whitespace-nowrap" scope="col">Created</th>
+            <th className="px-4 py-3 text-left font-semibold text-gray-700 border-b-2 border-gray-200 whitespace-nowrap" scope="col">Actions</th>
           </tr>
         </thead>
         <tbody>
           {books.map((book) => (
             <tr key={book.id}>
-              {/* Title links to the book detail page */}
-              <td style={tdStyles}>
+              <td className="px-4 py-3 text-gray-900 border-b border-gray-100 align-middle">
                 <Link
                   href={`/books/${book.id}`}
-                  style={rowLinkStyles}
+                  className="text-blue-600 font-medium hover:underline"
                   aria-label={`View details for "${book.title}"`}
                 >
                   {book.title}
                 </Link>
               </td>
-              <td style={tdStyles}>{book.author}</td>
-              <td style={tdStyles}>{book.isbn || '—'}</td>
-              <td style={tdStyles}>
+              <td className="px-4 py-3 text-gray-900 border-b border-gray-100 align-middle">{book.author}</td>
+              <td className="px-4 py-3 text-gray-900 border-b border-gray-100 align-middle">{book.isbn || '—'}</td>
+              <td className="px-4 py-3 border-b border-gray-100 align-middle">
                 <span
-                  style={statusStyles[book.status]}
+                  className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wide ${
+                    book.status === 'AVAILABLE'
+                      ? 'bg-green-50 text-green-800'
+                      : 'bg-red-50 text-red-800'
+                  }`}
                   aria-label={`Status: ${book.status.toLowerCase()}`}
                 >
                   {book.status}
                 </span>
               </td>
-              <td style={tdStyles}>{book.price}</td>
-              <td style={tdStyles}>{book.createdAt}</td>
-              <td style={tdStyles}>
+              <td className="px-4 py-3 text-gray-900 border-b border-gray-100 align-middle">{book.price}</td>
+              <td className="px-4 py-3 text-gray-900 border-b border-gray-100 align-middle">{book.createdAt}</td>
+              <td className="px-4 py-3 border-b border-gray-100 align-middle">
                 {book.canBuy && (
                   <button
                     type="button"
-                    style={isBuying && buyTarget?.id === book.id
-                      ? buyButtonDisabledStyles
-                      : buyButtonStyles}
+                    className="px-3.5 py-1.5 bg-green-600 text-white rounded-md text-xs font-medium whitespace-nowrap hover:bg-green-700 transition-colors disabled:bg-green-300 disabled:cursor-not-allowed"
                     disabled={isBuying && buyTarget?.id === book.id}
                     onClick={(e) => handleBuyClick(e, book)}
                     aria-label={`Buy "${book.title}"`}

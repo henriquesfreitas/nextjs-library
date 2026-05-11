@@ -3,83 +3,56 @@ import Link from 'next/link';
 /**
  * EmptyState Component — Shown when the book list has zero results.
  *
- * This is a Server Component (no 'use client' directive) because it has
- * no interactivity — it only renders static content and a navigation link.
- * Server Components are the default in Next.js App Router and produce
- * zero client-side JavaScript, which improves page load performance.
+ * Pattern: Server Component (Presentational)
+ * This file has no 'use client' directive, which means it renders entirely on the
+ * server as a React Server Component. It ships zero client-side JavaScript — the
+ * browser receives only the final HTML. This is ideal for static, non-interactive
+ * UI like an empty-state message.
  *
- * The component provides a friendly message and a clear call-to-action
- * so the user knows what to do next (create their first book).
+ * Why it exists:
+ * When the book inventory is empty, users need clear guidance on what to do next.
+ * This component provides a friendly message, a visual cue (📚 emoji), and a
+ * prominent call-to-action link to create their first book. Without it, users
+ * would see a blank page with no affordance for the next step.
+ *
+ * Semantic HTML:
+ * - Uses a <section> element to group the empty-state content semantically.
+ * - The emoji is wrapped in a div with `aria-hidden="true"` so screen readers
+ *   skip the decorative icon and focus on the meaningful text.
+ * - The heading (<h2>) provides document outline structure.
  *
  * Accessibility:
- * - Uses semantic HTML (section, heading, paragraph, link)
- * - The link is a standard <a> via Next.js <Link>, fully keyboard-navigable
- * - role="status" signals to assistive tech that this is an informational region
+ * - `role="status"` on the container tells assistive technology that this is a
+ *   status message (live region with implicit aria-live="polite"). When the empty
+ *   state appears (e.g., after deleting the last book), screen readers will
+ *   announce the content without interrupting the user.
+ * - The "Create a Book" link is clearly labeled and visually prominent.
  *
- * Validates: Requirements 1.3
+ * Styling uses Tailwind utility classes for maintainability and responsive design support.
+ *
+ * Validates: Requirement 1.3 (display empty state when no books exist).
  */
 
 export interface EmptyStateProps {
-  /** Message displayed to the user. Defaults to "No books found". */
   message?: string;
 }
-
-/* ------------------------------------------------------------------ */
-/*  Inline styles                                                      */
-/* ------------------------------------------------------------------ */
-
-const containerStyles: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: '3rem 1.5rem',
-  textAlign: 'center',
-};
-
-const iconStyles: React.CSSProperties = {
-  fontSize: '3rem',
-  marginBottom: '1rem',
-};
-
-const headingStyles: React.CSSProperties = {
-  margin: '0 0 0.5rem',
-  fontSize: '1.25rem',
-  fontWeight: 600,
-  color: '#374151',
-};
-
-const descriptionStyles: React.CSSProperties = {
-  margin: '0 0 1.5rem',
-  fontSize: '0.95rem',
-  color: '#6b7280',
-  lineHeight: 1.5,
-};
-
-const linkStyles: React.CSSProperties = {
-  display: 'inline-block',
-  padding: '0.6rem 1.25rem',
-  backgroundColor: '#2563eb',
-  color: '#ffffff',
-  borderRadius: '0.375rem',
-  textDecoration: 'none',
-  fontSize: '0.9rem',
-  fontWeight: 500,
-};
 
 export default function EmptyState({
   message = 'No books found',
 }: EmptyStateProps) {
   return (
-    <section style={containerStyles} role="status">
-      <div style={iconStyles} aria-hidden="true">
+    <section className="flex flex-col items-center justify-center py-12 px-6 text-center" role="status">
+      <div className="text-5xl mb-4" aria-hidden="true">
         📚
       </div>
-      <h2 style={headingStyles}>{message}</h2>
-      <p style={descriptionStyles}>
+      <h2 className="text-xl font-semibold text-gray-700 mb-2">{message}</h2>
+      <p className="text-[0.95rem] text-gray-500 leading-relaxed mb-6">
         Get started by adding your first book to the inventory.
       </p>
-      <Link href="/books/new" style={linkStyles}>
+      <Link
+        href="/books/new"
+        className="inline-block px-5 py-2.5 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
+      >
         Create a Book
       </Link>
     </section>

@@ -1,60 +1,40 @@
+@import "tailwindcss";
+
 /*
- * Global Styles — Minimal CSS Reset & Base Typography
+ * Global Styles
  *
- * Provides a consistent baseline across browsers by resetting box-sizing,
- * margins, and padding. Uses a system font stack for fast rendering without
- * external font downloads.
+ * Tailwind's base layer handles the CSS reset.
+ * Custom base styles are added below for elements not covered by Tailwind defaults.
  */
 
-/* ------------------------------------------------------------------ */
-/*  CSS Reset                                                          */
-/* ------------------------------------------------------------------ */
+@layer base {
+  body {
+    @apply text-gray-900 bg-gray-50 antialiased;
+    line-height: 1.6;
+  }
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  img {
+    @apply max-w-full block;
+  }
 }
 
-/* ------------------------------------------------------------------ */
-/*  Base Typography                                                    */
-/* ------------------------------------------------------------------ */
-
-html {
-  font-size: 16px;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* Notification slide-in animation */
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
-body {
-  font-family:
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    Roboto,
-    'Helvetica Neue',
-    Arial,
-    sans-serif,
-    'Apple Color Emoji',
-    'Segoe UI Emoji',
-    'Segoe UI Symbol';
-  line-height: 1.6;
-  color: #111827;
-  background-color: #f9fafb;
-}
-
-/* ------------------------------------------------------------------ */
-/*  Base Element Styles                                                */
-/* ------------------------------------------------------------------ */
-
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-img {
-  max-width: 100%;
-  display: block;
+.animate-slide-in {
+  animation: slideIn 0.25s ease-out;
 }
