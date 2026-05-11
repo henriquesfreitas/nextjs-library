@@ -189,7 +189,7 @@ export default function BookForm({ mode, book }: BookFormProps) {
             Title <span aria-hidden="true">*</span>
           </label>
           <input
-            id="book-title"
+            id="book-title" 
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
