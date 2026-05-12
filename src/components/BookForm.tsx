@@ -192,7 +192,7 @@ export default function BookForm({ mode, book }: BookFormProps) {
             id="book-title" 
             type="text"  
             value={title} 
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => setTitle(e.target.value)} 
             maxLength={100}
             required
             aria-required="true"
