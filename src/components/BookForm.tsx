@@ -190,7 +190,7 @@ export default function BookForm({ mode, book }: BookFormProps) {
           </label>
           <input
             id="book-title" 
-            type="text"
+            type="text"  
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             maxLength={100}
