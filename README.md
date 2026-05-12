@@ -1,6 +1,6 @@
 # Book Management CRUD 
 
-A full-stack web application for managing a book inventory. Users can create, view, edit, and delete book records, and mark books as sold via a "Buy" action. Built with Next.js (App Router), React, TypeScript, and PostgreSQL (Neon), following clean architecture principles.
+A full-stack web application for managing a book inventory. Users can create, view, edit, and delete book records, and mark books as sold via a "Buy" action. Built with Next.js (App Router), React, TypeScript, and PostgreSQL (Neon), following clean architecture principles. 
 
 ## Technology Stack
 
